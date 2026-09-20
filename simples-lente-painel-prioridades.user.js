@@ -4,8 +4,8 @@
 // @version      1.0.0
 // @description  Painel de pedidos Urgentes e Importantes da Simples Lente no Bling
 // @match        https://www.bling.com.br/*
-// @updateURL    https://cdn.shopify.com/s/files/1/0535/6879/8877/files/simples-lente-painel-prioridades.user.js
-// @downloadURL  https://cdn.shopify.com/s/files/1/0535/6879/8877/files/simples-lente-painel-prioridades.user.js
+// @updateURL    https://raw.githubusercontent.com/Pedrosa10/simples-lente-bling/refs/heads/main/simples-lente-painel-prioridades.user.js
+// @downloadURL  https://raw.githubusercontent.com/Pedrosa10/simples-lente-bling/refs/heads/main/simples-lente-painel-prioridades.user.js
 // @grant        none
 // ==/UserScript==
 
