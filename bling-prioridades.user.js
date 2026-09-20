@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Simples Lente - Prioridades Bling
 // @namespace    https://simpleslente.com.br/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Sistema completo de prioridades de pedidos da Simples Lente no Bling
 // @match        https://www.bling.com.br/*
 // @updateURL    https://raw.githubusercontent.com/Pedrosa10/simples-lente-bling/refs/heads/main/bling-prioridades.user.js
@@ -1222,17 +1222,27 @@
 
     // Situações que já conhecemos
     const STATUS_NAMES = {
-        '411304': 'Importado Shopify',
         '6':      'Em aberto',
-        '320917': 'Montagem Interna',
-        '734015': 'Em Separação',
-        '731217': 'Aguardando Cliente',
-        '715698': 'Em Aberto (sem lente)',
-        '828946': 'Em Aberto (grade)',
-        '829314': 'Em Aberto (lente externa)',
-        '828947': 'Receita em Digitação',
-        '731251': 'Conferido',
-        '828948': 'Erro ou Pendência',
+        '411304': 'Importado Shopify', // Simples Lente
+        '8971': 'Importado Shopify', // Woodz
+        '320917': 'Montagem Interna', // Simples Lente
+        '31528': 'Montagem Interna', // Woodz
+        '734015': 'Em Separação', // Simples Lente
+        '734013': 'Em Separação', // Woodz
+        '731217': 'Aguardando Cliente', // Simples Lente
+        '15476': 'Aguardando Cliente', // Woodz
+        '715698': 'Em Aberto (sem lente)', // Simples Lente
+        '452359': 'Em Aberto (sem lente)', // Woodz
+        '828946': 'Em Aberto (grade)', // Simples Lente
+        '830550': 'Em Aberto (grade)', // Woodz
+        '829314': 'Em Aberto (lente externa)', // Simples Lente
+        '830551': 'Em Aberto (lente externa)',// Woodz
+        '828947': 'Receita em Digitação', // Simples Lente
+        '830527': 'Receita em Digitação', // Woodz
+        '731251': 'Conferido', // Simples Lente
+        '731247': 'Conferido', // Woodz
+        '828948': 'Erro ou Pendência', // Simples Lente
+        '830525': 'Erro ou Pendência', // Woodz
         '9':      'Atendido',
         '12':     'Cancelado',
         '18':     'Venda Agenciada'
