@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Simples Lente - Prioridade de Pedidos
+// @name         Bling - Prioridade de Pedidos
 // @namespace    https://simpleslente.com.br/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Sistema de pedidos Urgentes e Importantes da Simples Lente no Bling
 // @match        https://www.bling.com.br/*
 // @updateURL    https://raw.githubusercontent.com/Pedrosa10/simples-lente-bling/refs/heads/main/simples-lente-prioridade.user.js
