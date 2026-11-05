@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Simples Lente - Prioridades Bling
+// @name         Bling - Prioridades Woodz e Simples Lente
 // @namespace    https://simpleslente.com.br/
-// @version      1.0.1
-// @description  Sistema completo de prioridades de pedidos da Simples Lente no Bling
+// @version      1.1.9
+// @description  Prioridades, atalhos Shopify/LensAdvizor e painel para Woodz e Simples Lente
 // @match        https://www.bling.com.br/*
 // @updateURL    https://raw.githubusercontent.com/Pedrosa10/simples-lente-bling/refs/heads/main/bling-prioridades.user.js
 // @downloadURL  https://raw.githubusercontent.com/Pedrosa10/simples-lente-bling/refs/heads/main/bling-prioridades.user.js
@@ -1258,7 +1258,7 @@
         style.id = 'sl-priority-panel-styles';
         style.textContent = `
             #sl-priority-button {
-                position: fixed; right: 25px; bottom: 25px; z-index: 99998;
+                position: fixed; right: 25px; bottom: 25px; z-index: 99998; touch-action: none; user-select: none; cursor: grab;
                 background: #343a40; color: white; border: 0; border-radius: 6px;
                 padding: 11px 17px; font-size: 14px; font-weight: 600;
                 cursor: pointer; box-shadow: 0 3px 10px rgba(0,0,0,.25);
@@ -1578,6 +1578,63 @@
         if (loading) loading.textContent = text;
     }
 
+    // Posição armazenada apenas neste navegador/perfil do Chrome.
+    function setupDraggablePriorityButton(button) {
+        const STORAGE_KEY = 'bling-prioridades-button-position-v1';
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch (_) {}
+
+        function position(left, top) {
+            const maxX = Math.max(0, window.innerWidth - button.offsetWidth);
+            const maxY = Math.max(0, window.innerHeight - button.offsetHeight);
+            button.style.left = Math.min(maxX, Math.max(0, left)) + 'px';
+            button.style.top = Math.min(maxY, Math.max(0, top)) + 'px';
+            button.style.right = 'auto';
+            button.style.bottom = 'auto';
+        }
+
+        if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+            requestAnimationFrame(() => position(saved.x, saved.y));
+        }
+        window.addEventListener('resize', () => {
+            if (button.style.left) {
+                position(parseFloat(button.style.left), parseFloat(button.style.top));
+            }
+        });
+
+        let drag = null;
+        button.addEventListener('pointerdown', event => {
+            if (event.button !== 0) return;
+            const rect = button.getBoundingClientRect();
+            drag = { id: event.pointerId, x: event.clientX, y: event.clientY,
+                     left: rect.left, top: rect.top, moved: false };
+            button.setPointerCapture(event.pointerId);
+            button.style.cursor = 'grabbing';
+        });
+        button.addEventListener('pointermove', event => {
+            if (!drag || drag.id !== event.pointerId) return;
+            const dx = event.clientX - drag.x;
+            const dy = event.clientY - drag.y;
+            if (Math.hypot(dx, dy) > 5) drag.moved = true;
+            if (drag.moved) position(drag.left + dx, drag.top + dy);
+        });
+        function finish(event) {
+            if (!drag || drag.id !== event.pointerId) return;
+            if (drag.moved) {
+                button.dataset.slSuppressClick = '1';
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                        x: parseFloat(button.style.left), y: parseFloat(button.style.top)
+                    }));
+                } catch (_) {}
+            }
+            button.style.cursor = 'grab';
+            drag = null;
+        }
+        button.addEventListener('pointerup', finish);
+        button.addEventListener('pointercancel', finish);
+    }
+
     function createInterface() {
         if (!document.body || document.querySelector('#sl-priority-button')) return;
 
@@ -1587,6 +1644,7 @@
         button.id = 'sl-priority-button';
         button.innerHTML = '⚡ Prioridades';
         document.body.appendChild(button);
+        setupDraggablePriorityButton(button);
 
         const overlay = document.createElement('div');
         overlay.id = 'sl-priority-overlay';
@@ -1631,6 +1689,10 @@
         document.body.appendChild(overlay);
 
         button.addEventListener('click', async () => {
+            if (button.dataset.slSuppressClick === '1') {
+                button.dataset.slSuppressClick = '0';
+                return;
+            }
             overlay.style.display = 'block';
             if (!panelPriorities.length) await loadPriorities();
         });
@@ -1662,4 +1724,275 @@
     }
 
     console.log('[Simples Lente] Painel de Prioridades carregado.');
+})();
+
+/* ========================================================================
+   MÓDULO 3 — ATALHOS SHOPIFY / LENSADVIZOR (WOODZ E SIMPLES LENTE)
+   ======================================================================== */
+(function () {
+    'use strict';
+
+    const STORE_SLUGS = { woodz: 'woodz-br', simpleslente: 'simpleslente' };
+    const LENS_SHOPS = { woodz: 'woodz-br.myshopify.com', simpleslente: '7c0c46-2.myshopify.com' };
+    const ID_PATTERN = /\b\d{13,16}\b/;
+    const LINK_CLASS = 'bling-external-order-links';
+
+    function inferStore(text) {
+        const value = String(text || '').toLowerCase().normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+        if (/woodz|\bwsz?\b|\bwz\b/.test(value)) return 'woodz';
+        if (/simples\s*lente|simpleslente|\bsl\b/.test(value)) return 'simpleslente';
+        return null;
+    }
+
+    function accountStore() {
+        // Identificação explícita e confiável da empresa logada no Bling.
+        const accountName = document.querySelector('#accountMenu .menu-username')?.textContent;
+        const fromAccount = inferStore(accountName);
+        if (fromAccount) return fromAccount;
+
+        // Fallback para versões da interface sem #accountMenu.
+        // O avatar da conta é uma pista, não uma identificação por pedido.
+        const candidates = [
+            document.querySelector('[class*="user-avatar"]'),
+            document.querySelector('[class*="account-avatar"]'),
+            document.querySelector('[class*="user-profile"]'),
+            document.querySelector('[class*="avatar"]')
+        ];
+        for (const el of candidates) {
+            if (!el) continue;
+            const store = inferStore([el.textContent, el.getAttribute('title'),
+                el.getAttribute('aria-label')].join(' '));
+            if (store) return store;
+        }
+        // Cabeçalho da conta (ex.: avatar com as iniciais WZ).
+        for (const header of document.querySelectorAll('header, nav, [role="banner"]')) {
+            const text = header.textContent || '';
+            const tail = text.slice(-160);
+            const store = inferStore(tail);
+            if (store) return store;
+        }
+        return null;
+    }
+
+    function orderStore() {
+        // Prioriza a loja escolhida no formulário do pedido.
+        for (const select of document.querySelectorAll('select')) {
+            const label = [select.id, select.name,
+                select.closest('div')?.parentElement?.textContent?.slice(0, 150)].join(' ');
+            if (!/loja/i.test(label)) continue;
+            const option = select.selectedOptions?.[0];
+            const store = inferStore(option?.textContent);
+            if (store) return store;
+        }
+        for (const el of document.querySelectorAll('input, [role="combobox"]')) {
+            const nearby = el.closest('div')?.parentElement?.textContent?.slice(0, 120) || '';
+            if (!/loja/i.test(nearby)) continue;
+            const store = inferStore(el.value || el.textContent || nearby);
+            if (store) return store;
+        }
+        return accountStore();
+    }
+
+    function chooseStore() {
+        // Não presumir a loja quando não houver identificação confiável.
+        const answer = window.prompt(
+            'Qual loja Shopify corresponde a esta conta Bling?\nDigite woodz ou simpleslente:',
+            ''
+        );
+        if (answer === null) return null;
+        const normalized = String(answer).trim().toLowerCase().replace(/\s+/g, '');
+        if (normalized === 'woodz' || normalized === 'woodz-br') return 'woodz';
+        if (normalized === 'simpleslente') return 'simpleslente';
+        window.alert('Loja não reconhecida. Digite woodz ou simpleslente.');
+        return null;
+    }
+
+    function makeLinks(id, store) {
+        if (!/^\d{13,16}$/.test(id)) return null;
+        const holder = document.createElement('span');
+        holder.className = LINK_CLASS;
+        holder.style.cssText = 'display:inline-flex;align-items:center;gap:8px;margin-left:9px;vertical-align:middle;white-space:nowrap;';
+
+        const shopify = document.createElement('a');
+        shopify.href = store ? `https://admin.shopify.com/store/${STORE_SLUGS[store]}/orders/${id}` : '#';
+        shopify.target = '_blank';
+        shopify.rel = 'noopener noreferrer';
+        shopify.title = store ? 'Abrir pedido no Shopify' : 'Selecionar loja e abrir no Shopify';
+        shopify.style.cssText = 'color:#248a49;font-size:15px;text-decoration:none;cursor:pointer;';
+        shopify.innerHTML = '<i class="fas fa-shopping-bag"></i>';
+        shopify.addEventListener('click', event => {
+            event.stopPropagation();
+            if (!store) {
+                event.preventDefault();
+                const selected = chooseStore();
+                if (selected) window.open(`https://admin.shopify.com/store/${STORE_SLUGS[selected]}/orders/${id}`, '_blank', 'noopener');
+            }
+        });
+        holder.appendChild(shopify);
+
+        const lens = document.createElement('a');
+        lens.href = store
+            ? `https://app.lensadvisor.com/shopify-admin/order/?id=${encodeURIComponent(id)}&shop=${encodeURIComponent(LENS_SHOPS[store])}`
+            : '#';
+        lens.target = '_blank';
+        lens.rel = 'noopener noreferrer';
+        lens.title = store ? 'Abrir receita no LensAdvisor' : 'Selecionar loja e abrir receita no LensAdvisor';
+        lens.style.cssText = 'color:#1676d2;font-size:15px;text-decoration:none;cursor:pointer;';
+        lens.innerHTML = '<img alt="LensAdvizor" src="data:image/png;base64,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" style="width:21px;height:18px;object-fit:contain;vertical-align:middle;">';
+        lens.addEventListener('click', event => {
+            event.stopPropagation();
+            if (!store) {
+                event.preventDefault();
+                const selected = chooseStore();
+                if (selected) {
+                    window.open(
+                        `https://app.lensadvisor.com/shopify-admin/order/?id=${encodeURIComponent(id)}&shop=${encodeURIComponent(LENS_SHOPS[selected])}`,
+                        '_blank', 'noopener'
+                    );
+                }
+            }
+        });
+        holder.appendChild(lens);
+        return holder;
+    }
+
+    function findTextNode(root, id) {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+            const node = walker.currentNode;
+            if (!node.parentElement || node.parentElement.closest('.' + LINK_CLASS)) continue;
+            if (String(node.textContent).includes(id)) return node;
+        }
+        return null;
+    }
+
+    function updateList() {
+        // Mesma identificação de pedidos da v1.1.5 (já testada).
+        const images = document.querySelectorAll(
+            'tr .marcadores img[numeropedidodalojavirtual]'
+        );
+        const store = accountStore();
+
+        for (const image of images) {
+            const id = (image.getAttribute('numeropedidodalojavirtual') || '').trim();
+            if (!/^\d{13,16}$/.test(id)) continue;
+
+            const markers = image.closest('.marcadores');
+            if (!markers) continue;
+
+            const number = image.nextElementSibling;
+            const validNumber = number?.tagName === 'P' &&
+                number.textContent.trim() === id;
+
+            // Link no número do Shopify, preservando o elemento nativo.
+            if (validNumber) {
+                let link = number.querySelector('a.bling-shopify-number-link');
+                if (!link) {
+                    link = document.createElement('a');
+                    link.className = 'bling-shopify-number-link';
+                    link.textContent = id;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.title = 'Abrir pedido no Shopify';
+                    link.style.cssText =
+                        'color:inherit;text-decoration:none;cursor:pointer;';
+                    number.replaceChildren(link);
+                }
+                const storeKey = store || '';
+                if (link.dataset.orderId !== id || link.dataset.store !== storeKey) {
+                    link.dataset.orderId = id;
+                    link.dataset.store = storeKey;
+                    link.href = store
+                        ? `https://admin.shopify.com/store/${STORE_SLUGS[store]}/orders/${id}`
+                        : '#';
+                    link.onclick = event => {
+                        event.stopPropagation();
+                        if (!store) {
+                            event.preventDefault();
+                            const selected = chooseStore();
+                            if (selected) {
+                                window.open(
+                                    `https://admin.shopify.com/store/${STORE_SLUGS[selected]}/orders/${id}`,
+                                    '_blank', 'noopener'
+                                );
+                            }
+                        }
+                    };
+                }
+            }
+
+            const existing = markers.querySelector(
+                '.' + LINK_CLASS + '[data-list-links="1"]'
+            );
+            const storeKey = store || '';
+            if (existing?.dataset.orderId === id &&
+                existing?.dataset.store === storeKey &&
+                existing?.dataset.numberLinkOnly === (validNumber ? '1' : '0')) {
+                continue;
+            }
+            existing?.remove();
+
+            // Reutiliza integralmente a geração de ícones da v1.1.5.
+            const links = makeLinks(id, store);
+            if (!links) continue;
+
+            // Se o ID já é clicável, mantém apenas o ícone LensAdvizor.
+            if (validNumber) links.querySelector('a')?.remove();
+
+            links.dataset.orderId = id;
+            links.dataset.store = storeKey;
+            links.dataset.listLinks = '1';
+            links.dataset.numberLinkOnly = validNumber ? '1' : '0';
+            (validNumber ? number : image).insertAdjacentElement('afterend', links);
+        }
+    }
+
+    function getOpenOrderId() {
+        const inputs = Array.from(document.querySelectorAll('input'));
+        for (const input of inputs) {
+            const id = String(input.value || '').trim();
+            if (!/^\d{13,16}$/.test(id)) continue;
+            const labelText = [input.id, input.name,
+                input.labels?.[0]?.textContent,
+                input.previousElementSibling?.textContent,
+                input.closest('div')?.querySelector('label')?.textContent,
+                input.closest('div')?.parentElement?.textContent?.slice(0, 140)].join(' ');
+            if (/loja\s*virtual|numero.*loja|numero.*ecommerce/i.test(labelText)) return { input, id };
+        }
+        return null;
+    }
+
+    function updateOpenOrder() {
+        const title = document.querySelector('#saleOrderHeader');
+        if (!title) return;
+        const order = getOpenOrderId();
+        const existing = document.querySelector('#bling-open-order-external-links');
+        if (!order) { existing?.remove(); return; }
+        const store = orderStore();
+        if (existing?.dataset.orderId === order.id && existing?.dataset.store === store) return;
+        existing?.remove();
+        const links = makeLinks(order.id, store);
+        if (!links) return;
+        links.id = 'bling-open-order-external-links';
+        links.dataset.orderId = order.id;
+        links.dataset.store = store;
+        title.insertAdjacentElement('afterend', links);
+    }
+
+    let scheduled = false;
+    function run() {
+        scheduled = false;
+        updateList();
+        updateOpenOrder();
+    }
+    function schedule() {
+        if (scheduled) return;
+        scheduled = true;
+        setTimeout(run, 250);
+    }
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
+    schedule();
+    console.log('[Bling Prioridades] Atalhos Shopify e LensAdvizor v1.1.5 carregados.');
 })();
