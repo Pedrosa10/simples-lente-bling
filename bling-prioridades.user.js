@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bling - Prioridades Woodz e Simples Lente
 // @namespace    https://simpleslente.com.br/
-// @version      1.1.9
+// @version      1.1.10
 // @description  Prioridades, atalhos Shopify/LensAdvizor e painel para Woodz e Simples Lente
 // @match        https://www.bling.com.br/*
 // @updateURL    https://raw.githubusercontent.com/Pedrosa10/simples-lente-bling/refs/heads/main/bling-prioridades.user.js
@@ -1746,33 +1746,30 @@
     }
 
     function accountStore() {
-        // Identificação explícita e confiável da empresa logada no Bling.
-        const accountName = document.querySelector('#accountMenu .menu-username')?.textContent;
-        const fromAccount = inferStore(accountName);
-        if (fromAccount) return fromAccount;
+        // Identifica a EMPRESA (não o usuário logado), inclusive em logins de funcionários.
+        const companyId = document.querySelector('#id_company_track_events')?.value?.trim();
+        const knownCompanies = {
+            '14880163957': 'simpleslente',
+            '368928151': 'woodz'
+        };
+        if (companyId) {
+            // Não adivinha quando a empresa não está cadastrada.
+            return knownCompanies[companyId] || null;
+        }
 
-        // Fallback para versões da interface sem #accountMenu.
-        // O avatar da conta é uma pista, não uma identificação por pedido.
-        const candidates = [
-            document.querySelector('[class*="user-avatar"]'),
-            document.querySelector('[class*="account-avatar"]'),
-            document.querySelector('[class*="user-profile"]'),
-            document.querySelector('[class*="avatar"]')
-        ];
-        for (const el of candidates) {
-            if (!el) continue;
-            const store = inferStore([el.textContent, el.getAttribute('title'),
-                el.getAttribute('aria-label')].join(' '));
-            if (store) return store;
+        // Compatibilidade com páginas do Bling que não expõem o ID da empresa.
+        const companyName = document.querySelector('#name_company_track_events')?.value;
+        if (companyName) {
+            const normalized = companyName.toUpperCase().trim();
+            if (normalized === 'SIMPLES OTICA LTDA') return 'simpleslente';
+            if (normalized === 'WZ COMERCIO E IMPORTACAO LTDA') return 'woodz';
         }
-        // Cabeçalho da conta (ex.: avatar com as iniciais WZ).
-        for (const header of document.querySelectorAll('header, nav, [role="banner"]')) {
-            const text = header.textContent || '';
-            const tail = text.slice(-160);
-            const store = inferStore(tail);
-            if (store) return store;
-        }
-        return null;
+        const companyEmail = document.querySelector('#email_company_track_events')?.value?.toLowerCase().trim();
+        if (companyEmail?.endsWith('@simpleslente.com.br')) return 'simpleslente';
+        if (companyEmail?.endsWith('@woodz.com.br')) return 'woodz';
+
+        // Último recurso: nome exibido no menu da conta.
+        return inferStore(document.querySelector('#accountMenu .menu-username')?.textContent);
     }
 
     function orderStore() {
